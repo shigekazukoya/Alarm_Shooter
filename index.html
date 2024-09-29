@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rust WASM Shooter</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            position: relative;
+        }
+        canvas {
+            border: 1px solid black;
+            display: block;
+            margin: 0 auto;
+        }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 20px;
+            z-index: 1;
+        }
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: red;
+            font-family: Arial, sans-serif;
+            font-size: 40px;
+            display: none;
+            text-align: center;
+            z-index: 2;
+        }
+        #resetButton {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 20px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="ui">
+        <div>Score: <span id="score">0</span></div>
+        <div>Lives: <span id="lives">3</span></div>
+    </div>
+    <div id="gameOver">
+        <div>Game Over</div>
+        <button id="resetButton">Reset</button>
+    </div>
+    <audio id="shootSound" src="shoot.wav"></audio>
+    <audio id="explosionSound" src="explosion.wav"></audio>
+    <script type="module">
+        import init, { start_game, reset_game } from './pkg/shooter.js';
+
+        async function run() {
+            await init(); // 引数なしで呼び出す
+            start_game();
+
+            const resetButton = document.getElementById('resetButton');
+            resetButton.addEventListener('click', () => {
+                reset_game();
+            });
+        }
+
+        run();
+    </script>
+</body>
+</html>
