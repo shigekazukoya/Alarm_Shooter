@@ -1,0 +1,26 @@
+/* 省略: 既存のスタイルはそのまま */
+
+#gameOver {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: red;
+    font-family: Arial, sans-serif;
+    font-size: 40px;
+    display: none;
+    text-align: center;
+    z-index: 2;
+}
+
+#gameOver p {
+    margin: 0;
+    padding: 0;
+}
+
+#gameOver #resetButton {
+    margin-top: 20px;
+    padding: 10px 20px;
+    font-size: 20px;
+    cursor: pointer;
+}

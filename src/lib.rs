@@ -1,13 +1,12 @@
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{
-    CanvasRenderingContext2d, HtmlCanvasElement, HtmlElement, HtmlAudioElement,
+    CanvasRenderingContext2d, HtmlCanvasElement, HtmlElement, HtmlAudioElement, HtmlImageElement,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
 use js_sys::Math::random;
 use once_cell::sync::Lazy;
-use std::sync::Mutex;
 
 // ライフサイクルのための状態管理
 #[derive(PartialEq)]
@@ -32,7 +31,7 @@ struct Player {
     width: f64,
     height: f64,
     speed: f64,
-    color: String,
+    image: HtmlImageElement, // プレイヤーの画像
 }
 
 struct Bullet {
@@ -43,14 +42,14 @@ struct Bullet {
     color: String,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 struct Enemy {
     x: f64,
     y: f64,
     width: f64,
     height: f64,
     speed: f64,
-    color: String,
+    image: HtmlImageElement, // 敵の画像
 }
 
 struct Game {
@@ -66,7 +65,9 @@ struct Game {
     context: CanvasRenderingContext2d,
     shoot_sound: HtmlAudioElement,
     explosion_sound: HtmlAudioElement,
-    last_frame_time: f64, // 追加
+    last_frame_time: f64,
+    background_image: HtmlImageElement, // 背景画像
+    enemy_image: HtmlImageElement,      // 敵の共通画像
 }
 
 impl Game {
@@ -74,15 +75,18 @@ impl Game {
         context: CanvasRenderingContext2d,
         shoot_sound: HtmlAudioElement,
         explosion_sound: HtmlAudioElement,
+        player_image: HtmlImageElement,
+        background_image: HtmlImageElement,
+        enemy_image: HtmlImageElement,
     ) -> Rc<RefCell<Game>> {
         Rc::new(RefCell::new(Game {
             player: Player {
-                x: 400.0,
+                x: 300.0,
                 y: 550.0,
                 width: 50.0,
                 height: 50.0,
                 speed: 5.0,
-                color: "blue".to_string(),
+                image: player_image,
             },
             bullets: Vec::new(),
             enemies: Vec::new(),
@@ -95,7 +99,9 @@ impl Game {
             context,
             shoot_sound,
             explosion_sound,
-            last_frame_time: 0.0, // 初期化
+            last_frame_time: 0.0,
+            background_image,
+            enemy_image,
         }))
     }
 
@@ -136,7 +142,6 @@ impl Game {
         let x = random() * (800.0 - enemy_width);
         let y = 0.0;
         let speed = 2.0 + random() * 3.0; // 2.0から5.0の速度
-        let color = "green".to_string();
 
         let enemy = Enemy {
             x,
@@ -144,40 +149,35 @@ impl Game {
             width: enemy_width,
             height: enemy_height,
             speed,
-            color,
+            image: self.enemy_image.clone(),
         };
         self.enemies.push(enemy);
     }
 
-    fn update_enemies(&mut self, _delta_time: f64) { // プレフィックス _ を追加
+    fn update_enemies(&mut self, _delta_time: f64) {
         for enemy in &mut self.enemies {
             enemy.y += enemy.speed;
         }
 
-        // 敵が画面下に到達した場合
-        let mut enemies_to_remove = Vec::new();
-        for enemy in &self.enemies {
-            if enemy.y > 600.0 {
-                enemies_to_remove.push(enemy.clone());
-            }
-        }
-        self.enemies.retain(|e| !enemies_to_remove.contains(e));
-
-        if self.lives == 0 {
-            self.state = GameState::GameOver;
-        }
+        // 敵が画面下に到達した場合、敵を削除
+        self.enemies.retain(|enemy| enemy.y <= 600.0);
     }
 
     fn check_collisions(&mut self) {
         let mut bullets_to_remove = Vec::new();
         let mut enemies_to_remove = Vec::new();
 
+        // 弾と敵の当たり判定
         for (b_idx, bullet) in self.bullets.iter().enumerate() {
             for (e_idx, enemy) in self.enemies.iter().enumerate() {
-                if bullet.x > enemy.x
-                    && bullet.x < enemy.x + enemy.width
-                    && bullet.y > enemy.y
+                // 弾を矩形として扱うために、幅と高さを設定
+                let bullet_width = bullet.radius * 2.0;
+                let bullet_height = bullet.radius * 2.0;
+
+                if bullet.x < enemy.x + enemy.width
+                    && bullet.x + bullet_width > enemy.x
                     && bullet.y < enemy.y + enemy.height
+                    && bullet.y + bullet_height > enemy.y
                 {
                     bullets_to_remove.push(b_idx);
                     enemies_to_remove.push(e_idx);
@@ -189,11 +189,28 @@ impl Game {
             }
         }
 
+        // プレイヤーと敵の衝突判定
+        let mut enemies_to_remove_on_collision = Vec::new();
+        for (e_idx, enemy) in self.enemies.iter().enumerate() {
+            if self.player.x < enemy.x + enemy.width
+                && self.player.x + self.player.width > enemy.x
+                && self.player.y < enemy.y + enemy.height
+                && self.player.y + self.player.height > enemy.y
+            {
+                enemies_to_remove_on_collision.push(e_idx);
+                self.lives = self.lives.saturating_sub(1);
+
+                // ダメージ音やエフェクトを追加する場合はここに記述
+            }
+        }
+
         // 重複削除
         bullets_to_remove.sort_unstable();
         bullets_to_remove.dedup();
         enemies_to_remove.sort_unstable();
         enemies_to_remove.dedup();
+        enemies_to_remove_on_collision.sort_unstable();
+        enemies_to_remove_on_collision.dedup();
 
         // 弾丸と敵を削除
         for &b_idx in bullets_to_remove.iter().rev() {
@@ -201,6 +218,15 @@ impl Game {
         }
         for &e_idx in enemies_to_remove.iter().rev() {
             self.enemies.remove(e_idx);
+        }
+        // プレイヤーと衝突した敵を削除
+        for &e_idx in enemies_to_remove_on_collision.iter().rev() {
+            self.enemies.remove(e_idx);
+        }
+
+        // ライフが0になったらゲームオーバー
+        if self.lives == 0 {
+            self.state = GameState::GameOver;
         }
     }
 
@@ -223,7 +249,7 @@ impl Game {
             .request_animation_frame(closure.as_ref().unchecked_ref())
             .expect("requestAnimationFrame failed");
 
-        closure.forget(); // クローズをメモリに保持させる
+        closure.forget(); // クロージャをメモリに保持させる
     }
 
     fn render_frame(&mut self, current_time: f64) {
@@ -243,38 +269,49 @@ impl Game {
         }
 
         // キー入力に基づいてプレイヤーの移動
-    if self.keys_pressed.contains(&"ArrowLeft".to_string()) || self.keys_pressed.contains(&"a".to_string()) {
-        self.player.x -= self.player.speed;
-        if self.player.x < 0.0 {
-            self.player.x = 0.0;
+        if self.keys_pressed.contains(&"ArrowLeft".to_string())
+            || self.keys_pressed.contains(&"a".to_string())
+        {
+            self.player.x -= self.player.speed;
+            if self.player.x < 0.0 {
+                self.player.x = 0.0;
+            }
         }
-    }
 
-        if self.keys_pressed.contains(&"ArrowRight".to_string()) || self.keys_pressed.contains(&"d".to_string()) {
+        if self.keys_pressed.contains(&"ArrowRight".to_string())
+            || self.keys_pressed.contains(&"d".to_string())
+        {
             self.player.x += self.player.speed;
             if self.player.x + self.player.width > 800.0 {
                 self.player.x = 800.0 - self.player.width;
             }
         }
 
-         if self.keys_pressed.contains(&"ArrowUp".to_string()) || self.keys_pressed.contains(&"w".to_string()) {
-        self.player.y -= self.player.speed;
-        if self.player.y < 0.0 {
-            self.player.y = 0.0;
+        if self.keys_pressed.contains(&"ArrowUp".to_string())
+            || self.keys_pressed.contains(&"w".to_string())
+        {
+            self.player.y -= self.player.speed;
+            if self.player.y < 0.0 {
+                self.player.y = 0.0;
+            }
         }
-    }
 
-    if self.keys_pressed.contains(&"ArrowDown".to_string()) || self.keys_pressed.contains(&"s".to_string()) {
-        self.player.y += self.player.speed;
-        if self.player.y + self.player.height > 600.0 {
-            self.player.y = 600.0 - self.player.height;
+        if self.keys_pressed.contains(&"ArrowDown".to_string())
+            || self.keys_pressed.contains(&"s".to_string())
+        {
+            self.player.y += self.player.speed;
+            if self.player.y + self.player.height > 600.0 {
+                self.player.y = 600.0 - self.player.height;
+            }
         }
-    }
 
         // 弾丸の位置を更新
         self.bullets.iter_mut().for_each(|bullet| {
             bullet.y -= bullet.speed;
         });
+
+        // 弾丸が画面外に出た場合、弾丸を削除
+        self.bullets.retain(|bullet| bullet.y >= 0.0);
 
         // 敵の位置を更新
         self.update_enemies(delta_time);
@@ -283,22 +320,36 @@ impl Game {
         self.check_collisions();
 
         // Canvasをクリア
-        self.context.set_fill_style(&JsValue::from_str("black"));
-        self.context.fill_rect(0.0, 0.0, 800.0, 600.0); // `.unwrap()` を削除
+        self.context.clear_rect(0.0, 0.0, 800.0, 600.0);
+
+        // 背景画像を描画
+        if let Err(e) = self.context.draw_image_with_html_image_element(
+            &self.background_image,
+            0.0,
+            0.0,
+        ) {
+            console_log!("Error drawing background: {:?}", e);
+        }
 
         // プレイヤーを描画
-        self.context.set_fill_style(&JsValue::from_str(&self.player.color));
-        self.context.fill_rect(
+        if let Err(e) = self.context.draw_image_with_html_image_element(
+            &self.player.image,
             self.player.x,
             self.player.y,
-            self.player.width,
-            self.player.height,
-        );
+        ) {
+            console_log!("Error drawing player: {:?}", e);
+        }
 
         // 弾丸を描画
         for bullet in &self.bullets {
             self.context.begin_path();
-            if let Err(e) = self.context.arc(bullet.x, bullet.y, bullet.radius, 0.0, std::f64::consts::PI * 2.0) {
+            if let Err(e) = self.context.arc(
+                bullet.x + bullet.radius,
+                bullet.y + bullet.radius,
+                bullet.radius,
+                0.0,
+                std::f64::consts::PI * 2.0,
+            ) {
                 console_log!("Error drawing arc: {:?}", e);
             }
             self.context.set_fill_style(&JsValue::from_str(&bullet.color));
@@ -307,21 +358,21 @@ impl Game {
 
         // 敵を描画
         for enemy in &self.enemies {
-            self.context.set_fill_style(&JsValue::from_str(&enemy.color));
-            self.context.fill_rect(
+            if let Err(e) = self.context.draw_image_with_html_image_element(
+                &enemy.image,
                 enemy.x,
                 enemy.y,
-                enemy.width,
-                enemy.height,
-            );
+            ) {
+                console_log!("Error drawing enemy: {:?}", e);
+            }
         }
 
-        // スコアとライフを更新
+        // スコアを更新
         self.update_ui();
     }
 
     fn update_ui(&self) {
-        // スコアとライフをHTML要素に反映
+        // スコアをHTML要素に反映
         let window = web_sys::window().expect("no global `window` exists");
         let document = window.document().expect("should have a document on window");
 
@@ -330,51 +381,63 @@ impl Game {
             .expect("should have score element");
         score_element.set_inner_html(&self.score.to_string());
 
+        // ライフをHTML要素に反映
         let lives_element = document
             .get_element_by_id("lives")
             .expect("should have lives element");
         lives_element.set_inner_html(&self.lives.to_string());
 
         // ゲームオーバー時の処理
+        let game_over_element = document.get_element_by_id("gameOver");
         if self.state == GameState::GameOver {
-            let game_over_element = document
-                .get_element_by_id("gameOver")
-                .expect("should have gameOver element");
-            game_over_element
-                .dyn_ref::<HtmlElement>()
-                .unwrap()
-                .style()
-                .set_property("display", "block")
-                .unwrap();
+            if let Some(element) = game_over_element {
+                element
+                    .dyn_ref::<HtmlElement>()
+                    .unwrap()
+                    .style()
+                    .set_property("display", "block")
+                    .unwrap();
+            }
+        } else {
+            // ゲームオーバーでない場合、非表示にする
+            if let Some(element) = game_over_element {
+                element
+                    .dyn_ref::<HtmlElement>()
+                    .unwrap()
+                    .style()
+                    .set_property("display", "none")
+                    .unwrap();
+            }
         }
     }
 
     fn reset(&mut self) {
-        self.player.x = 400.0;
+        self.player.x = 300.0;
+        self.player.y = 550.0;
         self.bullets.clear();
         self.enemies.clear();
         self.last_enemy_spawn = 0.0;
         self.score = 0;
-        self.lives = 3;
+        self.lives = 3; // ライフの初期化
         self.state = GameState::Playing;
         self.keys_pressed.clear();
 
         // ゲームオーバー表示を非表示にする
         let window = web_sys::window().expect("no global `window` exists");
         let document = window.document().expect("should have a document on window");
-        let game_over_element = document
-            .get_element_by_id("gameOver")
-            .expect("should have gameOver element");
-        game_over_element
-            .dyn_ref::<HtmlElement>()
-            .unwrap()
-            .style()
-            .set_property("display", "none")
-            .unwrap();
+        let game_over_element = document.get_element_by_id("gameOver");
+        if let Some(element) = game_over_element {
+            element
+                .dyn_ref::<HtmlElement>()
+                .unwrap()
+                .style()
+                .set_property("display", "none")
+                .unwrap();
+        }
     }
 }
 
-// グローバルなゲームインスタンスを unsafe static mut に変更
+// グローバルなゲームインスタンスを保持
 static mut GAME: Option<Rc<RefCell<Game>>> = None;
 
 #[wasm_bindgen]
@@ -406,9 +469,27 @@ pub fn start_game() {
         .dyn_into::<HtmlAudioElement>()
         .expect("explosionSound should be HtmlAudioElement");
 
-    let game = Game::new(context, shoot_sound, explosion_sound);
+    // 画像のロード
+    let player_image = HtmlImageElement::new().unwrap();
+    player_image.set_src("assets/player.png");
 
-    // グローバルなゲームインスタンスを設定（unsafe ブロック内で）
+    let background_image = HtmlImageElement::new().unwrap();
+    background_image.set_src("assets/background.png");
+
+    let enemy_image = HtmlImageElement::new().unwrap();
+    enemy_image.set_src("assets/enemy.png");
+
+    // ゲームの初期化
+    let game = Game::new(
+        context,
+        shoot_sound,
+        explosion_sound,
+        player_image,
+        background_image,
+        enemy_image,
+    );
+
+    // グローバルなゲームインスタンスを設定
     unsafe {
         GAME = Some(game.clone());
     }
@@ -416,12 +497,16 @@ pub fn start_game() {
     // キーボードイベントリスナーの設定
     {
         let game_rc = game.clone();
-        let key_down_closure = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
-            let key = event.key();
-            game_rc.borrow_mut().key_down(key);
-        }) as Box<dyn FnMut(web_sys::KeyboardEvent)>);
+        let key_down_closure =
+            Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
+                let key = event.key();
+                game_rc.borrow_mut().key_down(key);
+            }) as Box<dyn FnMut(web_sys::KeyboardEvent)>);
         window
-            .add_event_listener_with_callback("keydown", key_down_closure.as_ref().unchecked_ref())
+            .add_event_listener_with_callback(
+                "keydown",
+                key_down_closure.as_ref().unchecked_ref(),
+            )
             .expect("failed to add keydown listener");
         key_down_closure.forget();
     }
@@ -444,7 +529,7 @@ pub fn start_game() {
 
 #[wasm_bindgen]
 pub fn reset_game() {
-    // グローバルなゲームインスタンスを取得してリセット（unsafe ブロック内で）
+    // グローバルなゲームインスタンスを取得してリセット
     unsafe {
         if let Some(game_rc) = &mut GAME {
             game_rc.borrow_mut().reset();
