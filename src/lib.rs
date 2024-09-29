@@ -243,12 +243,12 @@ impl Game {
         }
 
         // キー入力に基づいてプレイヤーの移動
-        if self.keys_pressed.contains(&"ArrowLeft".to_string()) || self.keys_pressed.contains(&"a".to_string()) {
-            self.player.x -= self.player.speed;
-            if self.player.x < 0.0 {
-                self.player.x = 0.0;
-            }
+    if self.keys_pressed.contains(&"ArrowLeft".to_string()) || self.keys_pressed.contains(&"a".to_string()) {
+        self.player.x -= self.player.speed;
+        if self.player.x < 0.0 {
+            self.player.x = 0.0;
         }
+    }
 
         if self.keys_pressed.contains(&"ArrowRight".to_string()) || self.keys_pressed.contains(&"d".to_string()) {
             self.player.x += self.player.speed;
@@ -256,6 +256,20 @@ impl Game {
                 self.player.x = 800.0 - self.player.width;
             }
         }
+
+         if self.keys_pressed.contains(&"ArrowUp".to_string()) || self.keys_pressed.contains(&"w".to_string()) {
+        self.player.y -= self.player.speed;
+        if self.player.y < 0.0 {
+            self.player.y = 0.0;
+        }
+    }
+
+    if self.keys_pressed.contains(&"ArrowDown".to_string()) || self.keys_pressed.contains(&"s".to_string()) {
+        self.player.y += self.player.speed;
+        if self.player.y + self.player.height > 600.0 {
+            self.player.y = 600.0 - self.player.height;
+        }
+    }
 
         // 弾丸の位置を更新
         self.bullets.iter_mut().for_each(|bullet| {
