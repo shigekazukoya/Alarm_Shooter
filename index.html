@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Rust WASM Shooter</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div id="infoPanel">
+            <div id="scoreBoard">
+                スコア: <span id="score">0</span>
+            </div>
+            <div id="livesBoard">
+                ライフ: <span id="lives">3</span>
+            </div>
+            <div id="instructions">
+                <h2>操作方法</h2>
+                <ul>
+                    <li>移動: 矢印キーまたは WASD キー</li>
+                    <li>弾を撃つ: スペースキー</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ゲームオーバー表示とリセットボタンを追加 -->
+    <div id="gameOver">
+        <p>ゲームオーバー</p>
+        <button id="resetButton">もう一度プレイ</button>
+    </div>
+
+    <!-- オーディオ要素 -->
+    <audio id="shootSound" src="assets/shoot.mp3"></audio>
+    <audio id="explosionSound" src="assets/explosion.mp3"></audio>
+
+    <!-- wasm のロード -->
+    <script type="module">
+        import init, { start_game, reset_game } from './pkg/shooter.js';
+
+        async function run() {
+            await init();
+            start_game();
+
+            const resetButton = document.getElementById('resetButton');
+            resetButton.addEventListener('click', () => {
+                reset_game();
+            });
+        }
+
+        run();
+    </script>
+</body>
+</html>

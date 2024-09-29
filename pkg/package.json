@@ -1,0 +1,15 @@
+{
+  "name": "shooter",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "shooter_bg.wasm",
+    "shooter.js",
+    "shooter.d.ts"
+  ],
+  "main": "shooter.js",
+  "types": "shooter.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
